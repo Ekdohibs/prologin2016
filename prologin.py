@@ -42,8 +42,7 @@ def argmin(l, f = lambda x: x):
 
 dist_tuyaux = None
 
-def distance_tuyaux():
-    global dist_tuyaux
+def distance_tuyaux(carte):
     distance = make_matrix()
     tas = []
 
@@ -61,7 +60,6 @@ def distance_tuyaux():
             if is_tuyau(newp):
                 heappush(tas, (d + 1, newp))
 
-    dist_tuyaux = distance
     return distance
 
 rev_tuyaux = None
@@ -114,7 +112,9 @@ def joue():
                 heappush(dsts, (d + 1, newp))
             
     
-    pss = [pos for pos in liste_pulsars() if r[pos[0]][pos[1]] != None]
+    pss = [pos for pos in liste_pulsars() if r[pos[0]][pos[1]] != None \
+           and info_pulsar(pos).pulsations_restantes > 0 \
+    ]
     pss += [(x, y) for (x, y) in all_positions() if \
             r[x][y] != None and dist_tuyaux[x][y] != None and \
             rev_tuyaux[moi() % 2][x][y] == 0 and \
@@ -147,6 +147,8 @@ def partie_init():
 
 # Fonction appelée à chaque tour.
 def jouer_tour():
+    global dist_tuyaux
+    
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
         deplayer(p)
@@ -154,7 +156,7 @@ def jouer_tour():
     
     for i in range(4):
         read_carte()
-        distance_tuyaux()
+        dist_tuyaux = distance_tuyaux(carte)
         tuyaux_revenu()
         joue()
 
