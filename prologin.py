@@ -153,6 +153,23 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
         else:
             assert False
 
+def augmente_aspiration():
+    bases = ma_base()
+    is_used = [False] * len(bases)
+    for i, pos in enumerate(bases):
+        for pp in adj(pos):
+            if est_tuyau(pp):
+                is_used[i] = True
+                break
+    for i in range(len(bases)):
+        if not is_used[i]: continue
+        if puissance_aspiration(bases[i]) == LIMITE_ASPIRATION:
+            continue
+        for j in range(len(bases)):
+            if is_used[j]: continue
+            if puissance_aspiration(bases[j]) == 0: continue
+            deplacer_aspiration(bases[j], bases[i])
+            
 mon_id = None
 # Fonction appelée au début de la partie.
 def partie_init():
@@ -173,6 +190,8 @@ def jouer_tour():
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
         joue(carte, dist_tuyaux, rev_tuyaux)
 
+    augmente_aspiration()
+        
 # Fonction appelée à la fin de la partie.
 def partie_fin():
     pass
