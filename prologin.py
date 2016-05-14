@@ -1,6 +1,6 @@
 from api import *
 from heapq import heappush, heappop, heapify
-from time import time
+from time import time, sleep
 from copy import deepcopy
 
 carte = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
@@ -214,7 +214,7 @@ def augmente_aspiration():
             if puissance_aspiration(bases[j]) == 0: continue
             deplacer_aspiration(bases[j], bases[i])
 
-#@timed
+@timed
 def tuyaux_flow(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
     dsts = [(dist_tuyaux[p[0]][p[1]], p) for p in pos]
@@ -258,6 +258,7 @@ def revenu_moyen(carte, rev_tuyaux):
 
             
 MAX_AT_TRIES = 50
+MAX_AT_TIME = 0.3 # In seconds
             
 @timed
 def attaque(carte, dist_tuyaux, rev_tuyaux):
@@ -273,7 +274,14 @@ def attaque(carte, dist_tuyaux, rev_tuyaux):
                      p[1] - 1, TAILLE_TERRAIN - 2 - p[1])) or -100
     at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
     at = at[:MAX_AT_TRIES]
+    t0 = time()
+    iterations = 0
     for p in at:
+        if time() - t0 > MAX_AT_TIME:
+            log("Early exit of attaque after %d iterations (%fs elapsed)" % \
+                (iterations, time() - t0))
+            break
+        iterations += 1
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
@@ -286,10 +294,13 @@ def attaque(carte, dist_tuyaux, rev_tuyaux):
     if crvdiff > rv[moi() % 2] / 10. and best != None:
         detruire(best)
 
+MAX_RENF_TRIES = 50
+MAX_RENF_TIME = 0.3 # In seconds
+        
 @timed
 def renforce_tout(carte, dist_tuyaux, rev_tuyaux):
     if points_action() == 0:
-        return
+        return True
     flow = tuyaux_flow(carte, dist_tuyaux)
     rv = revenu_moyen(carte, rev_tuyaux)
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
@@ -301,8 +312,16 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux):
         return -(min(p[0] - 1, TAILLE_TERRAIN - 2 - p[0], \
                      p[1] - 1, TAILLE_TERRAIN - 2 - p[1]))
     at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
-    at = at[:MAX_AT_TRIES]
+    at = at[:MAX_RENF_TRIES]
+    t0 = time()
+    iterations = 0
     for p in at:
+        if time() - t0 > MAX_AT_TIME:
+            log("Early exit of renforce_tout after %d iterations (%fs elapsed)" % \
+                (iterations, time() - t0))
+            break
+        
+        iterations += 1
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
@@ -314,6 +333,9 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux):
             worst = p
     if worst != None:
         renforce(worst)
+        return False
+    else:
+        return True
 
         
 mon_id = None
@@ -360,7 +382,8 @@ def jouer_tour():
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
-        renforce_tout(carte, dist_tuyaux, rev_tuyaux)
+        if renforce_tout(carte, dist_tuyaux, rev_tuyaux):
+            break
 
     augmente_aspiration()
 
