@@ -151,6 +151,8 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma):
         l.append(value)
     return l
 
+DOUBLE_SIZE = True
+
 @timed
 def joue(carte, dist_tuyaux, rev_tuyaux):
     dsts = [(dist_tuyaux[x][y] / 2., (x, y)) for (x, y) in all_positions() \
@@ -201,7 +203,10 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
         for newp in adj(p):
             nx, ny = newp
             if newp in orig and carte[x][y] == case_type.VIDE:
+                du, dv = nx - x, ny - y
                 construire(p)
+                if DOUBLE_SIZE:
+                    construire((x + dv, y - du))
                 return
             if r[nx][ny] == r[x][y] - 1 and carte[nx][ny] == case_type.VIDE:
                 x, y = p = newp
@@ -240,7 +245,7 @@ def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
         r = inf.puissance * inf.pulsations_restantes
         for (x, y) in adj(pos):
             flow[x][y] += r
-    for pos in all_tuyaux(carte):
+    for x, y in all_tuyaux(carte):
         flow[x][y] += carte_plasma[x][y]
 
     for d, p in dsts:
