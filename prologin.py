@@ -10,15 +10,27 @@ def log(*a, **kw):
     print("[%d]" % mon_id, end = " ")
     print(*a, **kw)
 
+timed_dict = {}
+    
 def timed(f):
+    name = f.__name__
     def wrap(*a, **kw):
         t0 = time()
         r = f(*a, **kw)
         took = time() - t0
-        log("%s took %fs" % (f.__name__, took))
+        (total_time, calls) = timed_dict.get(name, (0., 0))
+        timed_dict[name] = (total_time + took, calls + 1)
         return r
     wrap.__name__ = f.__name__
     return wrap
+
+def timed_debut_tour():
+    timed_dict.clear()
+
+def timed_show_log():
+    for name in timed_dict:
+        tt, calls = timed_dict[name]
+        log("%s took %fs (%d calls)" % (name, tt, calls))
 
 def padd(p1, p2):
     return (p1[0] + p2[0], p1[1] + p2[1])
@@ -26,7 +38,7 @@ def padd(p1, p2):
 def valide(p):
     return 0 <= p[0] < TAILLE_TERRAIN and 0 <= p[1] < TAILLE_TERRAIN
 
-#@timed
+@timed
 def read_carte():
     carte = make_matrix()
     for i in range(TAILLE_TERRAIN):
@@ -89,7 +101,7 @@ def distance_tuyaux(carte):
 
 rev_tuyaux = None
 
-#@timed
+@timed
 def tuyaux_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
     dsts = [(dist_tuyaux[p[0]][p[1]], p) for p in pos]
@@ -114,7 +126,7 @@ def tuyaux_revenu(carte, dist_tuyaux):
 
     return revenus
 
-#@timed
+@timed
 def revenu_moyen(carte, rev_tuyaux):
     l = []
     for a in range(2):
@@ -128,7 +140,7 @@ def revenu_moyen(carte, rev_tuyaux):
         l.append(value)
     return l
 
-#@timed
+@timed
 def joue(carte, dist_tuyaux, rev_tuyaux):
     dsts = [(dist_tuyaux[x][y] / 2., (x, y)) for (x, y) in all_positions() \
             if rev_tuyaux[moi() % 2][x][y] > 0]
@@ -184,7 +196,7 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
         else:
             assert False
 
-#@timed            
+@timed            
 def augmente_aspiration():
     bases = ma_base()
     is_used = [False] * len(bases)
@@ -229,7 +241,7 @@ def tuyaux_flow(carte, dist_tuyaux):
 
     return flow
 
-#@timed
+@timed
 def revenu_moyen(carte, rev_tuyaux):
     l = []
     for a in range(2):
@@ -247,7 +259,7 @@ def revenu_moyen(carte, rev_tuyaux):
             
 MAX_AT_TRIES = 50
             
-#@timed
+@timed
 def attaque(carte, dist_tuyaux, rev_tuyaux):
     flow = tuyaux_flow(carte, dist_tuyaux)
     rv = revenu_moyen(carte, rev_tuyaux)
@@ -273,7 +285,37 @@ def attaque(carte, dist_tuyaux, rev_tuyaux):
             best = p
     if crvdiff > rv[moi() % 2] / 10. and best != None:
         detruire(best)
-            
+
+@timed
+def renforce_tout(carte, dist_tuyaux, rev_tuyaux):
+    if points_action() == 0:
+        return
+    flow = tuyaux_flow(carte, dist_tuyaux)
+    rv = revenu_moyen(carte, rev_tuyaux)
+    rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
+    crvdiff = rvdiff
+    worst = None
+    at = all_tuyaux(carte)
+    at = [p for p in at if rev_tuyaux[moi() % 2][p[0]][p[1]] > 0]
+    def wh(p):
+        return -(min(p[0] - 1, TAILLE_TERRAIN - 2 - p[0], \
+                     p[1] - 1, TAILLE_TERRAIN - 2 - p[1]))
+    at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
+    at = at[:MAX_AT_TRIES]
+    for p in at:
+        ncarte = deepcopy(carte)
+        ncarte[p[0]][p[1]] = case_type.DEBRIS
+        dt = distance_tuyaux(ncarte)
+        rvt = tuyaux_revenu(ncarte, dt)
+        rm = revenu_moyen(ncarte, rvt)
+        rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
+        if rmdiff < crvdiff:
+            crvdiff = rmdiff
+            worst = p
+    if worst != None:
+        renforce(worst)
+
+        
 mon_id = None
 # Fonction appelée au début de la partie.
 def partie_init():
@@ -292,6 +334,7 @@ def renforce(p):
 # Fonction appelée à chaque tour.
 def jouer_tour():
     log("Tour %d" % tour_actuel())
+    timed_debut_tour()
     
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
@@ -306,12 +349,22 @@ def jouer_tour():
         attaque(carte, dist_tuyaux, rev_tuyaux)
         
     for i in range(4):
+        if points_action() == 0: break
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
         joue(carte, dist_tuyaux, rev_tuyaux)
 
+    for i in range(4):
+        if points_action() == 0: break
+        carte = read_carte()
+        dist_tuyaux = distance_tuyaux(carte)
+        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
+        renforce_tout(carte, dist_tuyaux, rev_tuyaux)
+
     augmente_aspiration()
+
+    timed_show_log()
         
 # Fonction appelée à la fin de la partie.
 def partie_fin():
