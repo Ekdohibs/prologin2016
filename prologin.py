@@ -294,8 +294,8 @@ def attaque(carte, dist_tuyaux, rev_tuyaux):
     if crvdiff > rv[moi() % 2] / 10. and best != None:
         detruire(best)
 
-MAX_RENF_TRIES = 50
-MAX_RENF_TIME = 0.3 # In seconds
+MAX_RENF_TRIES = 20
+MAX_RENF_TIME = 0.1 # In seconds
         
 @timed
 def renforce_tout(carte, dist_tuyaux, rev_tuyaux):
@@ -316,7 +316,7 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux):
     t0 = time()
     iterations = 0
     for p in at:
-        if time() - t0 > MAX_AT_TIME:
+        if time() - t0 > MAX_RENF_TIME:
             log("Early exit of renforce_tout after %d iterations (%fs elapsed)" % \
                 (iterations, time() - t0))
             break
