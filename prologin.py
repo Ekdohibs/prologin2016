@@ -252,9 +252,12 @@ def attaque(carte, dist_tuyaux, rev_tuyaux):
     best = None
     at = all_tuyaux(carte)
     at = [p for p in at if rev_tuyaux[adversaire() % 2][p[0]][p[1]] > 0]
-    at.sort(key = lambda p: flow[p[0]][p[1]], reverse = True)
+    def wh(p):
+        return -(min(p[0] - 1, TAILLE_TERRAIN - 2 - p[0], \
+                     p[1] - 1, TAILLE_TERRAIN - 2 - p[1])) or -100
+    at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
     at = at[:MAX_AT_TRIES]
-    for p in at               :
+    for p in at:
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
