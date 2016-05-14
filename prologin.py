@@ -14,8 +14,7 @@ def valide(p):
 def read_carte():
     for i in range(TAILLE_TERRAIN):
         for j in range(TAILLE_TERRAIN):
-            carte[x][y] = type_case((x, y))
-
+            carte[i][j] = type_case((i, j))
 
 dist_tuyaux = None
 def distance_tuyaux():
@@ -32,7 +31,7 @@ def distance_tuyaux():
         x, y = p
         if distance[x][y] != None: continue
         distance[x][y] = d
-        for dir in dirs:
+        for dir in DIRS:
             nx, ny = newp = padd(p, dir)
             if valide(newp) and carte[nx][ny] in [case_type.TUYAU, case_type.SUPER_TUYAU]:
                 heappush(tas, (d + 1, newp))
@@ -49,10 +48,10 @@ def tuyaux_revenu():
     for d, p in dsts:
         x, y = p
         if carte[x][y] == case_type.BASE:
-            revenus[proprietaire_base((x, y))][x][y] = 1.
+            revenus[proprietaire_base((x, y)) % 2][x][y] = 1.
             continue
         voisins = []
-        for dir in dists:
+        for dir in DIRS:
             nx, ny = newp = padd(p, dir)
             if valide(newp) and dist_tuyaux[nx][ny] == d - 1:
                 voisins.append((nx, ny))
@@ -76,26 +75,35 @@ def argmin(l, f=lambda x: x):
     return ibest
 
 def joue():
-    dsts = [(0, (x, y)) for x in range(TAILLE_TERRAIN) for y in range(TAILLE_TERRAIN) if rev_tuyaux[moi()][x][y] > 0]
-    r = [[None] * TAILLE_TERRAIN for i in range(len(TAILLE_TERRAIN))]
+    dsts = [(dist_tuyaux[x][y] / 2., (x, y)) for x in range(TAILLE_TERRAIN) for y in range(TAILLE_TERRAIN) if rev_tuyaux[moi() % 2][x][y] > 0]
+    orig = set(a[1] for a in dsts)
+    r = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
     heapify(dsts)
     while len(dsts) > 0:
         d, p = heappop(dsts)
         x, y = p
         if r[x][y] != None: continue
         r[x][y] = d
-        if carte[x][y] == case_type.VIDE:
+        if carte[x][y] == case_type.VIDE or p in orig:
             for dir in DIRS:
                 nx, ny = newp = padd(p, dir)
                 if valide(newp):
                     heappush(dsts, (d + 1, newp))
-    pss = [pos for pos in liste_pulsars() if r[pos[0]][pos[1]] not in [None, 1]]
-    closest_pular = argmin(pss, lambda p: r[p[0]][p[1]])
+    pss = [pos for pos in liste_pulsars() if r[pos[0]][pos[1]] != None]
+    pss += [(x, y) for x in range(TAILLE_TERRAIN) for y in range(TAILLE_TERRAIN) if r[x][y] != None and dist_tuyaux[x][y] != None and rev_tuyaux[moi() % 2][x][y] == 0 and rev_tuyaux[adversaire() % 2][x][y] > 0 and dist_tuyaux[x][y] >= 2 * r[x][y]]
+    pss = list(set(p for p in pss if all(padd(p, dir) not in orig for dir in DIRS)))
+    if pss == []: return
+    closest_pulsar = pss[argmin(pss, lambda p: r[p[0]][p[1]])]
     x, y = p = closest_pulsar
-    while r[x][y] > 1:
+    #while r[x][y] > 1:
+    while True:
         for dir in DIRS:
             nx, ny = newp = padd(p, dir)
-            if valide(newp) and r[nx][ny] == r[x][y] - 1:
+            if newp in orig:
+                #print(moi(), "CONSTRUIRE", p)
+                construire(p)
+                return
+            if valide(newp) and r[nx][ny] == r[x][y] - 1 and carte[nx][ny] == case_type.VIDE:
                 x, y = p = newp
                 break
     construire(p)
@@ -108,6 +116,9 @@ def partie_init():
 
 # Fonction appelée à chaque tour.
 def jouer_tour():
+    for p in hist_tuyaux_detruits():
+        deplayer(p)
+        contruire(p)
     for i in range(4):
         read_carte()
         distance_tuyaux()
