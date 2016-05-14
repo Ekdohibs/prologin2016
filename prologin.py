@@ -1,9 +1,19 @@
 from api import *
 from heapq import heappush, heappop, heapify
-
+from time import time
 
 carte = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+
+def timed(f):
+    def wrap(*a, **kw):
+        t0 = time()
+        r = f(*a, **kw)
+        took = time() - t0
+        print("[%d] %s took %fs" % (mon_id, f.__name__, took))
+        return r
+    wrap.__name__ = f.__name__
+    return wrap
 
 def padd(p1, p2):
     return (p1[0] + p2[0], p1[1] + p2[1])
@@ -11,6 +21,7 @@ def padd(p1, p2):
 def valide(p):
     return 0 <= p[0] < TAILLE_TERRAIN and 0 <= p[1] < TAILLE_TERRAIN
 
+@timed
 def read_carte():
     for i in range(TAILLE_TERRAIN):
         for j in range(TAILLE_TERRAIN):
@@ -42,6 +53,7 @@ def argmin(l, f = lambda x: x):
 
 dist_tuyaux = None
 
+@timed
 def distance_tuyaux(carte):
     distance = make_matrix()
     tas = []
@@ -64,8 +76,8 @@ def distance_tuyaux(carte):
 
 rev_tuyaux = None
 
-def tuyaux_revenu():
-    global rev_tuyaux
+@timed
+def tuyaux_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
     dsts = [(dist_tuyaux[p[0]][p[1]], p) for p in pos]
     dsts.sort()
@@ -87,10 +99,10 @@ def tuyaux_revenu():
         for a in range(2):
             revenus[a][x][y] /= len(voisins)
 
-    rev_tuyaux = revenus
     return revenus
 
-def joue():
+@timed
+def joue(carte, dist_tuyaux, rev_tuyaux):
     dsts = [(dist_tuyaux[x][y] / 2., (x, y)) for (x, y) in all_positions() \
             if rev_tuyaux[moi() % 2][x][y] > 0]
     orig = set(a[1] for a in dsts)
@@ -141,13 +153,14 @@ def joue():
         else:
             assert False
 
+mon_id = None
 # Fonction appelée au début de la partie.
 def partie_init():
-    pass
+    global mon_id
+    mon_id = moi()
 
 # Fonction appelée à chaque tour.
 def jouer_tour():
-    global dist_tuyaux
     
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
@@ -157,8 +170,8 @@ def jouer_tour():
     for i in range(4):
         read_carte()
         dist_tuyaux = distance_tuyaux(carte)
-        tuyaux_revenu()
-        joue()
+        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
+        joue(carte, dist_tuyaux, rev_tuyaux)
 
 # Fonction appelée à la fin de la partie.
 def partie_fin():
