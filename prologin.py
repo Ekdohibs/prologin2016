@@ -1,6 +1,7 @@
 from api import *
 from heapq import heappush, heappop, heapify
 from time import time
+from copy import deepcopy
 
 carte = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
@@ -21,7 +22,7 @@ def padd(p1, p2):
 def valide(p):
     return 0 <= p[0] < TAILLE_TERRAIN and 0 <= p[1] < TAILLE_TERRAIN
 
-@timed
+#@timed
 def read_carte():
     carte = make_matrix()
     for i in range(TAILLE_TERRAIN):
@@ -37,6 +38,9 @@ def all_positions():
 
 def all_pulsars(carte):
     return [(x, y) for (x, y) in all_positions() if carte[x][y] == case_type.PULSAR]
+
+def all_tuyaux(carte):
+    return [pos for pos in all_positions() if is_tuyau(pos, carte)]
 
 def make_matrix(elem = None):
     return [[elem] * TAILLE_TERRAIN for _ in range(TAILLE_TERRAIN)]
@@ -58,7 +62,7 @@ def argmin(l, f = lambda x: x):
 
 dist_tuyaux = None
 
-@timed
+#@timed
 def distance_tuyaux(carte):
     distance = make_matrix()
     tas = []
@@ -81,7 +85,7 @@ def distance_tuyaux(carte):
 
 rev_tuyaux = None
 
-@timed
+#@timed
 def tuyaux_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
     dsts = [(dist_tuyaux[p[0]][p[1]], p) for p in pos]
@@ -106,7 +110,21 @@ def tuyaux_revenu(carte, dist_tuyaux):
 
     return revenus
 
-@timed
+#@timed
+def revenu_moyen(carte, rev_tuyaux):
+    l = []
+    for a in range(2):
+        value = 0.
+        for pos in all_pulsars(carte):
+            inf = info_pulsar(pos)
+            if inf.pulsations_restantes == 0: continue
+            r = inf.puissance / inf.periode
+            for (x, y) in adj(pos):
+                value += r * revenus[a][x][y]
+        l.append(value)
+    return l
+
+#@timed
 def joue(carte, dist_tuyaux, rev_tuyaux):
     dsts = [(dist_tuyaux[x][y] / 2., (x, y)) for (x, y) in all_positions() \
             if rev_tuyaux[moi() % 2][x][y] > 0]
@@ -138,7 +156,8 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
             rev_tuyaux[adversaire() % 2][x][y] > 0 and \
             dist_tuyaux[x][y] >= 2 * r[x][y]]
     pss += [(x, y) for (x, y) in all_positions() if \
-            dist_tuyaux[x][y] == None and is_tuyau((x, y), carte)
+            dist_tuyaux[x][y] == None and is_tuyau((x, y), carte) \
+            and r[x][y] != None
     ]
 
     pss = list(set(p for p in pss if \
@@ -161,6 +180,7 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
         else:
             assert False
 
+#@timed            
 def augmente_aspiration():
     bases = ma_base()
     is_used = [False] * len(bases)
@@ -177,6 +197,75 @@ def augmente_aspiration():
             if is_used[j]: continue
             if puissance_aspiration(bases[j]) == 0: continue
             deplacer_aspiration(bases[j], bases[i])
+
+#@timed
+def tuyaux_flow(carte, dist_tuyaux):
+    pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
+    dsts = [(dist_tuyaux[p[0]][p[1]], p) for p in pos]
+    dsts.sort(reverse = True)
+    flow = make_matrix(0.)
+
+    for pos in all_pulsars(carte):
+        inf = info_pulsar(pos)
+        if inf.pulsations_restantes == 0: continue
+        r = inf.puissance / inf.periode
+        for (x, y) in adj(pos):
+            flow[x][y] += r
+
+    for d, p in dsts:
+        x, y = p
+        if carte[x][y] == case_type.BASE: continue
+
+        voisins = [(nx, ny) for (nx, ny) in adj(p) if dist_tuyaux[nx][ny] == d - 1]
+
+        assert(len(voisins) > 0)
+
+        for nx, ny in voisins:
+            flow[nx][ny] += flow[x][y] / len(voisins)
+
+    return flow
+
+#@timed
+def revenu_moyen(carte, rev_tuyaux):
+    l = []
+    for a in range(2):
+        value = 0.
+        for pos in all_pulsars(carte):
+            inf = info_pulsar(pos)
+            if inf.pulsations_restantes == 0: continue
+            r = inf.puissance / inf.periode
+            for (x, y) in adj(pos):
+                value += r * rev_tuyaux[a][x][y]
+        l.append(value)
+    return l
+
+
+            
+MAX_AT_TRIES = 50
+            
+#@timed
+def attaque(carte, dist_tuyaux, rev_tuyaux):
+    flow = tuyaux_flow(carte, dist_tuyaux)
+    rv = revenu_moyen(carte, rev_tuyaux)
+    rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
+    crvdiff = rvdiff
+    best = None
+    at = all_tuyaux(carte)
+    at = [p for p in at if rev_tuyaux[adversaire() % 2][p[0]][p[1]] > 0]
+    at.sort(key = lambda p: flow[p[0]][p[1]], reverse = True)
+    at = at[:MAX_AT_TRIES]
+    for p in at               :
+        ncarte = deepcopy(carte)
+        ncarte[p[0]][p[1]] = case_type.DEBRIS
+        dt = distance_tuyaux(ncarte)
+        rvt = tuyaux_revenu(ncarte, dt)
+        rm = revenu_moyen(ncarte, rvt)
+        rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
+        if rmdiff > crvdiff:
+            crvdiff = rmdiff
+            best = p
+    if crvdiff > rv[moi() % 2] / 10. and best != None:
+        detruire(best)
             
 mon_id = None
 # Fonction appelée au début de la partie.
@@ -186,12 +275,19 @@ def partie_init():
 
 # Fonction appelée à chaque tour.
 def jouer_tour():
+    print("[%d] Tour %d" % (moi(), tour_actuel()))
     
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
-        deplayer(p)
-        contruire(p)
-    
+        deblayer(p)
+        construire(p)
+
+    if points_action() >= COUT_DESTRUCTION and CHARGE_DESTRUCTION <= score(moi()):
+        carte = read_carte()
+        dist_tuyaux = distance_tuyaux(carte)
+        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
+        attaque(carte, dist_tuyaux, rev_tuyaux)
+        
     for i in range(4):
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
