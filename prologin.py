@@ -6,12 +6,16 @@ from copy import deepcopy
 carte = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
+def log(*a, **kw):
+    print("[%d]" % mon_id, end = " ")
+    print(*a, **kw)
+
 def timed(f):
     def wrap(*a, **kw):
         t0 = time()
         r = f(*a, **kw)
         took = time() - t0
-        print("[%d] %s took %fs" % (mon_id, f.__name__, took))
+        log("%s took %fs" % (f.__name__, took))
         return r
     wrap.__name__ = f.__name__
     return wrap
@@ -276,14 +280,24 @@ def partie_init():
     global mon_id
     mon_id = moi()
 
+def renforce(p):
+    l = [u for u in adj(p) if est_libre(u)] \
+        + list(set(u for pp in adj(p) for u in adj(pp) if est_libre(u)))
+    if l == []:
+        return
+    i = argmin(l, lambda pp: -sum(est_tuyau(r) for r in adj(pp)))
+    log("Renforce", l[i])
+    construire(l[i])
+    
 # Fonction appelée à chaque tour.
 def jouer_tour():
-    print("[%d] Tour %d" % (moi(), tour_actuel()))
+    log("Tour %d" % tour_actuel())
     
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
         deblayer(p)
         construire(p)
+        renforce(p)
 
     if points_action() >= COUT_DESTRUCTION and CHARGE_DESTRUCTION <= score(moi()):
         carte = read_carte()
