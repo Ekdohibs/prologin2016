@@ -23,15 +23,20 @@ def valide(p):
 
 @timed
 def read_carte():
+    carte = make_matrix()
     for i in range(TAILLE_TERRAIN):
         for j in range(TAILLE_TERRAIN):
             carte[i][j] = type_case((i, j))
+    return carte
 
-def is_tuyau(p):
+def is_tuyau(p, carte):
     return carte[p[0]][p[1]] in [case_type.TUYAU, case_type.SUPER_TUYAU]
 
 def all_positions():
     return [(x, y) for x in range(TAILLE_TERRAIN) for y in range(TAILLE_TERRAIN)]
+
+def all_pulsars(carte):
+    return [(x, y) for (x, y) in all_positions() if carte[x][y] == case_type.PULSAR]
 
 def make_matrix(elem = None):
     return [[elem] * TAILLE_TERRAIN for _ in range(TAILLE_TERRAIN)]
@@ -69,7 +74,7 @@ def distance_tuyaux(carte):
         if distance[x][y] != None: continue
         distance[x][y] = d
         for newp in adj(p):
-            if is_tuyau(newp):
+            if is_tuyau(newp, carte):
                 heappush(tas, (d + 1, newp))
 
     return distance
@@ -124,7 +129,7 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
                 heappush(dsts, (d + 1, newp))
             
     
-    pss = [pos for pos in liste_pulsars() if r[pos[0]][pos[1]] != None \
+    pss = [pos for pos in all_pulsars(carte) if r[pos[0]][pos[1]] != None \
            and info_pulsar(pos).pulsations_restantes > 0 \
     ]
     pss += [(x, y) for (x, y) in all_positions() if \
@@ -132,6 +137,9 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
             rev_tuyaux[moi() % 2][x][y] == 0 and \
             rev_tuyaux[adversaire() % 2][x][y] > 0 and \
             dist_tuyaux[x][y] >= 2 * r[x][y]]
+    pss += [(x, y) for (x, y) in all_positions() if \
+            dist_tuyaux[x][y] == None and is_tuyau((x, y), carte)
+    ]
 
     pss = list(set(p for p in pss if \
                    any(padd(p, dir) not in orig for dir in DIRS)))
@@ -185,7 +193,7 @@ def jouer_tour():
         contruire(p)
     
     for i in range(4):
-        read_carte()
+        carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
         joue(carte, dist_tuyaux, rev_tuyaux)
