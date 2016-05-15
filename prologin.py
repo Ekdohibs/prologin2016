@@ -164,10 +164,8 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
     return revenus, times
 
 
-PLASMA_TRADEOFF = 5
-
 @timed
-def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
+def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
     l = []
     ntrs = NB_TOURS - tour_actuel() + 1
     for a in range(2):
@@ -180,10 +178,11 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
                 value += r * rev_tuyaux[a][x][y]
                 #if ttimes[x][y] <= ntrs:
                 #    value += r * rev_tuyaux[a][x][y] * (ntrs - ttimes[x][y])
-        """for x, y in all_tuyaux(carte):
-            #if ttimes[x][y] <= ntrs:
-            #    value += rev_tuyaux[a][x][y] * carte_plasma[x][y] * (ntrs - ttimes[x][y])
-            value += PLASMA_TRADEOFF * carte_plasma[x][y] * rev_tuyaux[a][x][y]"""
+        if plasma_value > 0:
+            for x, y in all_tuyaux(carte):
+                #if ttimes[x][y] <= ntrs:
+                #    value += rev_tuyaux[a][x][y] * carte_plasma[x][y] * (ntrs - ttimes[x][y])
+                value += plasma_value * carte_plasma[x][y] * rev_tuyaux[a][x][y]
         
         l.append(value)
     return l
@@ -319,7 +318,8 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
     best = None
-    at = all_tuyaux(carte)
+    #at = all_tuyaux(carte)
+    at = [pos for pos in all_positions() if carte[pos[0]][pos[1]] == case_type.TUYAU]
     at = [p for p in at if rev_tuyaux[adversaire() % 2][p[0]][p[1]] > 0]
     def wh(p):
         return -(min(p[0] - 1, TAILLE_TERRAIN - 2 - p[0], \
@@ -397,8 +397,9 @@ def partie_init():
     mon_id = moi()
 
 def renforce(p):
-    l = [u for u in adj(p) if est_libre(u)] \
-        + list(set(u for pp in adj(p) for u in adj(pp) if est_libre(u)))
+    l = [(x, y) for x in range(p[0] - 1, p[0] + 2) \
+         for y in range(p[0] - 1, p[0] + 2) if est_valide((x, y)) and \
+         est_libre((x, y))]
     if l == []:
         return
     i = argmin(l, lambda pp: -sum(est_tuyau(r) for r in adj(pp)))
@@ -408,7 +409,8 @@ def renforce(p):
 MAX_WD_TRIES = 30
 MAX_WD_TIME = 0.2 # In seconds
 WD_TRADEOFF = 10.
-    
+WD_PLASMA = 1
+
 @timed
 def was_destroyed(dpos):
     if points_action() == 0:
@@ -421,7 +423,7 @@ def was_destroyed(dpos):
     rev_tuyaux, t_times = tuyaux_time_revenu(ncarte, dist_tuyaux)
 
     flow = tuyaux_flow(ncarte, dist_tuyaux, carte_plasma)
-    rv = revenu_moyen(ncarte, rev_tuyaux, carte_plasma, t_times)
+    rv = revenu_moyen(ncarte, rev_tuyaux, carte_plasma, t_times, WD_PLASMA)
 
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
@@ -446,7 +448,7 @@ def was_destroyed(dpos):
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
         rvt, tt = tuyaux_time_revenu(ncarte, dt)
-        rm = revenu_moyen(ncarte, rvt, carte_plasma, tt)
+        rm = revenu_moyen(ncarte, rvt, carte_plasma, tt, WD_PLASMA)
         rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
         if rmdiff < crvdiff:
             crvdiff = rmdiff
