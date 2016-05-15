@@ -633,7 +633,7 @@ def upgrade(carte, dist_tuyaux, rev_tuyaux):
 ######################################################################
         
 pulsar_total_value = None
-AT_MIN_PULSAR_VALUE = 350
+AT_MIN_PULSAR_VALUE = 0
         
 # Éxécute toutes les phases précédentes dans l'ordre
 def jouer_tour():
