@@ -306,14 +306,28 @@ def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
             flow[nx][ny] += flow[x][y] / len(voisins)
 
     return flow
-            
+
+@timed
+def flow_directions(carte, dist_tuyaux):
+    drs = make_matrix()
+
+    for x, y in all_positions():
+        d = dist_tuyaux[x][y]
+        if d == None: continue
+        drs[x][y] = [(nx, ny) for (nx, ny) in adj((x, y)) if dist_tuyaux[nx][ny] == d - 1]
+
+    return drs
+
+
 MAX_AT_TRIES = 50
 MAX_AT_TIME = 0.3 # In seconds
 AT_THRESH = 100.
+AT_DELAY_TRADEOFF = 5
             
 @timed
 def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
+    fld = flow_directions(carte, dist_tuyaux)
     rv = revenu_moyen(carte, rev_tuyaux, carte_plasma, t_times)
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
@@ -339,7 +353,21 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
         dt = distance_tuyaux(ncarte)
         rvt, tt = tuyaux_time_revenu(ncarte, dt)
         rm = revenu_moyen(ncarte, rvt, carte_plasma, tt)
+        fldd = flow_directions(ncarte, dt)
+        delayed = 0
+        for ty in all_tuyaux(ncarte):
+            if fldd[ty[0]][ty[1]] == None: continue
+            w = len(fldd[ty[0]][ty[1]])
+            for ntx, nty in fldd[ty[0]][ty[1]]:
+                if fld[ntx][nty] != None:
+                    ww = len(fld[ntx][nty])
+                    for nnt in fld[ntx][nty]:
+                        if ty == nnt:
+                            delayed += carte_plasma[ty[0]][ty[1]] / (w * ww)
+        
         rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
+        rmdiff += AT_DELAY_TRADEOFF * delayed
+
         if rmdiff > crvdiff:
             crvdiff = rmdiff
             best = p
@@ -398,7 +426,7 @@ def partie_init():
 
 def renforce(p):
     l = [(x, y) for x in range(p[0] - 1, p[0] + 2) \
-         for y in range(p[0] - 1, p[0] + 2) if est_valide((x, y)) and \
+         for y in range(p[1] - 1, p[1] + 2) if valide((x, y)) and \
          est_libre((x, y))]
     if l == []:
         return
