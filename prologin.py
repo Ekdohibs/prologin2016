@@ -497,6 +497,9 @@ def was_destroyed(dpos):
     dist_tuyaux = distance_tuyaux(ncarte)
     rev_tuyaux, t_times = tuyaux_time_revenu(ncarte, dist_tuyaux)
 
+    if t_times[dpos[0]][dpos[1]] > NB_TOURS - tour_actuel():
+        return
+
     flow = tuyaux_flow(ncarte, dist_tuyaux, carte_plasma)
     rv = revenu_moyen(ncarte, rev_tuyaux, carte_plasma, t_times, WD_PLASMA)
 
