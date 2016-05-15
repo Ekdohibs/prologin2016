@@ -7,7 +7,7 @@ carte = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 
 def log(*a, **kw):
-    print("[%d]" % mon_id, end = " ")
+    print("[%d]" % moi(), end = " ")
     print(*a, **kw)
 
 timed_dict = {}
@@ -454,8 +454,7 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
 mon_id = None
 # Fonction appelée au début de la partie.
 def partie_init():
-    global mon_id
-    mon_id = moi()
+    pass
 
 def renforce(p):
     l = [(x, y) for x in range(p[0] - 1, p[0] + 2) \
@@ -539,8 +538,9 @@ pulsar_mean = None
 # Fonction appelée à chaque tour.
 def jouer_tour():
     log("Tour %d" % tour_actuel())
+    
     timed_debut_tour()
-
+    
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
         was_destroyed(p)
