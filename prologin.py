@@ -121,6 +121,7 @@ dist_tuyaux = None
 
 # Calcule la distance de chaque tuyau aux bases,
 # en tenant compte de la force d'aspiration de celles-ci
+# Fonctionne avec un simple Diskstra
 @timed
 def distance_tuyaux(carte):
     distance = make_matrix()
@@ -148,6 +149,7 @@ rev_tuyaux = None
 
 # Calcule, pour chaque position, la proportion du plasma y étant
 # revenant à chaque joueur
+# On calcule ça par programmation dynamique, par distance décroissante
 @timed
 def tuyaux_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
@@ -175,6 +177,7 @@ def tuyaux_revenu(carte, dist_tuyaux):
 
 # Calcule la même chose que la fonction précédente, mais calcule
 # également le temps mis par le plasma à atteindre les bases
+# Fonctionne comme la précédente
 @timed
 def tuyaux_time_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
@@ -214,6 +217,8 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
 
 # Calcule une estimation de la valeur d'une position pour chaque joueur
 # plasma_value permet de contrôler l'importance du plasma dans les tubes
+# Ignore les plasmas qui n'ont aucune chance d'arriver à une base avant
+# la fin de la partie
 @timed
 def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
     l = []
@@ -251,6 +256,7 @@ POWER_TRADEOFF = 2
 @timed
 def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
          estimated_turn_actions, t_times):
+    # Précalculs
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
     
     dsts = [(dist_tuyaux[x][y] + 5, (x, y), (x, y)) for (x, y) in all_positions() \
@@ -261,6 +267,9 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
     
     heapify(dsts)
 
+    # Disktra : distance initialisée comme dist_tuyaux (avec offset de 5
+    # pour avoir des positifs) ; on garde en mémoire de quel sommet
+    # on est parti.
     while len(dsts) > 0:
         d, p, op = heappop(dsts)
         x, y = p
@@ -275,7 +284,11 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
         elif carte[x][y] == case_type.VIDE:
             for newp in adj(p):
                 heappush(dsts, (d + EXPAND_TRADEOFF, newp, op))
-            
+
+    # Calcul de la valeur de chaque sommet, et de quels sommets sont
+    # intéressants. Ce sont : les pulsars, et les tuyaux vers qui on
+    # peut racourcir un chemin.
+    # On estime la valeur qu'ils fournissent, et leur temps restant.
     pss = []
     wpss = {}
     rpss = {}
@@ -287,6 +300,7 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
                 wpss[pos] = u.puissance / u.periode
                 rpss[pos] = u.periode * u.pulsations_totales
 
+    # Estimations assez brutales du time to live et de la valeur.
     for x, y in all_positions():
         if r[x][y] != None and dist_tuyaux[x][y] != None and \
            dist_tuyaux[x][y] + 5 > r[x][y] + 1e-3 and \
@@ -303,13 +317,13 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
     pss = list(set(p for p in pss if \
                    any(padd(p, dir) not in orig for dir in DIRS)))
 
+    # Calcul de si un segment est assez près, on l'ignore sinon.
     toura = tour_actuel()
     def close_enough(p):
         ox, oy = org[p[0]][p[1]]
         advance_per_turn = (estimated_turn_actions + 1) // 2
         if advance_per_turn == 0:
             return False
-        #max_dist = ((rpss[p] - toura + 2) // 2) * advance_per_turn
         orig_dist = r[p[0]][p[1]] - r[ox][oy]
         first_get_turn = toura + 2 * ((orig_dist + advance_per_turn - 1) // advance_per_turn)
         first_back_turn = first_get_turn + orig_dist + t_times[ox][oy]
@@ -317,17 +331,18 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
     
     pss = [p for p in pss if close_enough(p)]
 
-    # TODO: do something
     if pss == []: return
 
+    # Renormalisation de la valeur.
     mean = sum(wpss[p] for p in pss) / len(pss)
 
+    # Heuristique indiquant la valeur d'un noeud.
     def h(p):
         ox, oy = org[p[0]][p[1]]
         return r[p[0]][p[1]] - r[ox][oy] * SHORTER_TRADEOFF - \
-            wpss[p] * POWER_TRADEOFF / mean #wpss[p] * POWER_TRADEOFF
+            wpss[p] * POWER_TRADEOFF / mean
 
-    
+    # On suit le chemin depuis ce noeud, et on construit.
     best = pss[argmin(pss, h)]
     x, y = p = best
     while True:
@@ -337,9 +352,11 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
                 du, dv = nx - x, ny - y
                 construire(p)
                 if DOUBLE_SIZE:
+                    # Vecteur orthogonal
                     construire((x + dv, y - du))
                 return
-            if r[nx][ny] == r[x][y] - EXPAND_TRADEOFF and carte[nx][ny] == case_type.VIDE:
+            if r[nx][ny] == r[x][y] - EXPAND_TRADEOFF and \
+               carte[nx][ny] == case_type.VIDE:
                 x, y = p = newp
                 break
         else:
@@ -348,7 +365,9 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
 ######################################################################
             
 # Utilise les points d'action restants (éventuellement 0)
-# pour augmenter l'aspiration des bases
+# pour augmenter l'aspiration des bases.
+# Prend l'aspiration de n'importe quelle base non utilisée
+# et la donne à n'importe quelle base utilisée.
 @timed            
 def augmente_aspiration():
     bases = ma_base()
@@ -371,6 +390,8 @@ def augmente_aspiration():
 ######################################################################
             
 # Calcule le flot transitant dans chaque tuyau
+# Fonctionne comme la fonction de revenu, mais en sens inverse,
+# en partant des pulsars.
 @timed
 def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
@@ -423,16 +444,20 @@ MAX_AT_TIME = 0.3 # In seconds
 AT_THRESH = 100.
 AT_DELAY_TRADEOFF = 5
 
-# Attaque l'adversaire, en cherchant le point le plus faible
-# Essaie de retarder le plasma dans ses tuyaux si possible
+# Attaque l'adversaire, en cherchant le point le plus faible.
+# N'attaque pas les super tuyaux.
+# Essaie de retarder le plasma dans ses tuyaux si possible.
 @timed
 def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
+    # Précalculs
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
     fld = flow_directions(carte, dist_tuyaux)
     rv = revenu_moyen(carte, rev_tuyaux, carte_plasma, t_times)
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
     best = None
+
+    # Tuyaux à possiblement attaquer, triés par heuristique.
     #at = all_tuyaux(carte)
     at = [pos for pos in all_positions() if carte[pos[0]][pos[1]] == case_type.TUYAU]
     at = [p for p in at if rev_tuyaux[adversaire() % 2][p[0]][p[1]] > 0]
@@ -441,16 +466,21 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
                      p[1] - 1, TAILLE_TERRAIN - 2 - p[1])) or -100
     at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
     at = at[:MAX_AT_TRIES]
+
+    # On cherche le meilleur parmi ceux sélectionnés; on s'autorise
+    # à s'arrêter en avance si on a plus de temps.
     t0 = time()
     iterations = 0
     imoi = moi() % 2
     rem_time = NB_TOURS - tour_actuel() + 1
+    
     for p in at:
         if time() - t0 > MAX_AT_TIME:
             log("Early exit of attaque after %d iterations (%fs elapsed)" % \
                 (iterations, time() - t0))
             break
         iterations += 1
+        
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
@@ -458,11 +488,14 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
         rm = revenu_moyen(ncarte, rvt, carte_plasma, tt)
         fldd = flow_directions(ncarte, dt)
         delayed = 0
+        
         for ty in all_tuyaux(ncarte):
             if fldd[ty[0]][ty[1]] == None: continue
             elif carte_plasma[ty[0]][ty[1]] == 0: continue
             elif t_times[ty[0]][ty[1]] == None or t_times[ty[0]][ty[1]] > rem_time:
+                # Trop tard : celui-ci ne sera jamais obtenu
                 continue
+
             w = len(fldd[ty[0]][ty[1]])
             for ntx, nty in fldd[ty[0]][ty[1]]:
                 if fld[ntx][nty] != None:
@@ -479,6 +512,8 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
         if rmdiff > crvdiff:
             crvdiff = rmdiff
             best = p
+
+    # Si ça vaut le coup : on attaque le meilleur.
     if crvdiff > rv[moi() % 2] / AT_THRESH and \
        crvdiff >= AT_DELAY_TRADEOFF * CHARGE_DESTRUCTION and best != None:
           detruire(best)
@@ -489,7 +524,8 @@ MAX_RENF_TRIES = 20
 MAX_RENF_TIME = 0.1 # In seconds
 
 # À la fin du tour, si il reste encore des points d'action, renforce les
-# points faibles afin d'obtenir un double tuyau
+# points faibles afin d'obtenir un double tuyau.
+# Fonctionne comme la fonction d'attaque.
 @timed
 def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     if points_action() == 0:
@@ -499,6 +535,7 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
     worst = None
+    
     at = all_tuyaux(carte)
     at = [p for p in at if rev_tuyaux[moi() % 2][p[0]][p[1]] > 0]
     def wh(p):
@@ -506,6 +543,7 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
                      p[1] - 1, TAILLE_TERRAIN - 2 - p[1]))
     at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
     at = at[:MAX_RENF_TRIES]
+    
     t0 = time()
     iterations = 0
     for p in at:
@@ -513,8 +551,8 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
             log("Early exit of renforce_tout after %d iterations (%fs elapsed)" % \
                 (iterations, time() - t0))
             break
-        
         iterations += 1
+        
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
@@ -524,6 +562,7 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
         if rmdiff < crvdiff:
             crvdiff = rmdiff
             worst = p
+
     if worst != None:
         renforce(worst)
         return False
@@ -559,7 +598,9 @@ WD_PLASMA = 1
 
 
 # Appelée quand une position a été détruite ; étudie si il est nécessaire
-# de la reconstruire, et si oui, la reconstruit et renforce les alentours
+# de la reconstruire, et si oui, la reconstruit et renforce les alentours.
+# On regarde pour cela ce qui se passe si l'adversaire attaque un
+# deuxième tuyau.
 @timed
 def was_destroyed(dpos):
     if points_action() == 0:
@@ -571,6 +612,7 @@ def was_destroyed(dpos):
     dist_tuyaux = distance_tuyaux(ncarte)
     rev_tuyaux, t_times = tuyaux_time_revenu(ncarte, dist_tuyaux)
 
+    # Trop tard pour ce tube : ça ne sert à rien de le reconstruire.
     if t_times[dpos[0]][dpos[1]] > NB_TOURS - tour_actuel():
         return
 
@@ -587,6 +629,8 @@ def was_destroyed(dpos):
                      p[1] - 1, TAILLE_TERRAIN - 2 - p[1]))
     at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
     at = at[:MAX_RENF_TRIES]
+
+    # Début de la recherche
     t0 = time()
     iterations = 0
     for p in at:
@@ -594,8 +638,8 @@ def was_destroyed(dpos):
             log("Early exit of was_destroyed after %d iterations (%fs elapsed)" % \
                 (iterations, time() - t0))
             break
-        
         iterations += 1
+
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
@@ -655,6 +699,7 @@ def jouer_tour():
 
     carte_plasma = read_carte_plasma()
 
+    # Détruire si intéressant
     if points_action() >= COUT_DESTRUCTION and \
        CHARGE_DESTRUCTION + 1 <= score(moi()) and \
        pulsar_total_value >= AT_MIN_PULSAR_VALUE:
@@ -663,6 +708,7 @@ def jouer_tour():
         rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
         attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times)
 
+    # Construire
     estimated_turn_actions = points_action()
     for i in range(4):
         if points_action() == 0: break
@@ -673,6 +719,7 @@ def jouer_tour():
         joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
              estimated_turn_actions, t_times)
 
+    # Renforcer
     for i in range(4):
         if points_action() == 0: break
         carte = read_carte()
@@ -681,12 +728,14 @@ def jouer_tour():
         if renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
             break
 
+    # Améliorer
     if points_action() > 0:
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
         upgrade(carte, dist_tuyaux, rev_tuyaux)
 
+    # Aspirer
     augmente_aspiration()
 
     timed_show_log()
