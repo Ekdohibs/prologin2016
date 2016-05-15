@@ -404,6 +404,62 @@ def renforce(p):
     i = argmin(l, lambda pp: -sum(est_tuyau(r) for r in adj(pp)))
     log("Renforce", l[i])
     construire(l[i])
+
+MAX_WD_TRIES = 30
+MAX_WD_TIME = 0.2 # In seconds
+WD_TRADEOFF = 10.
+    
+@timed
+def was_destroyed(dpos):
+    if points_action() == 0:
+        return
+    carte = read_carte()
+    ncarte = deepcopy(carte)
+    ncarte[dpos[0]][dpos[1]] = case_type.TUYAU
+    carte_plasma = read_carte_plasma()
+    dist_tuyaux = distance_tuyaux(ncarte)
+    rev_tuyaux, t_times = tuyaux_time_revenu(ncarte, dist_tuyaux)
+
+    flow = tuyaux_flow(ncarte, dist_tuyaux, carte_plasma)
+    rv = revenu_moyen(ncarte, rev_tuyaux, carte_plasma, t_times)
+
+    rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
+    crvdiff = rvdiff
+
+    at = all_tuyaux(carte)
+    at = [p for p in at if rev_tuyaux[moi() % 2][p[0]][p[1]] > 0]
+    def wh(p):
+        return -(min(p[0] - 1, TAILLE_TERRAIN - 2 - p[0], \
+                     p[1] - 1, TAILLE_TERRAIN - 2 - p[1]))
+    at.sort(key = lambda p: (flow[p[0]][p[1]], wh(p)), reverse = True)
+    at = at[:MAX_RENF_TRIES]
+    t0 = time()
+    iterations = 0
+    for p in at:
+        if time() - t0 > MAX_WD_TIME:
+            log("Early exit of was_destroyed after %d iterations (%fs elapsed)" % \
+                (iterations, time() - t0))
+            break
+        
+        iterations += 1
+        ncarte = deepcopy(carte)
+        ncarte[p[0]][p[1]] = case_type.DEBRIS
+        dt = distance_tuyaux(ncarte)
+        rvt, tt = tuyaux_time_revenu(ncarte, dt)
+        rm = revenu_moyen(ncarte, rvt, carte_plasma, tt)
+        rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
+        if rmdiff < crvdiff:
+            crvdiff = rmdiff
+
+    print(rv, rvdiff, crvdiff)
+    ddiff = rvdiff - crvdiff
+    if ddiff < rv[moi() % 2] / WD_TRADEOFF:
+        return
+
+    deblayer(dpos)
+    construire(dpos)
+    renforce(dpos)
+
     
 # Fonction appelée à chaque tour.
 def jouer_tour():
@@ -412,9 +468,7 @@ def jouer_tour():
     
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
-        deblayer(p)
-        construire(p)
-        renforce(p)
+        was_destroyed(p)
 
     carte_plasma = read_carte_plasma()
 
