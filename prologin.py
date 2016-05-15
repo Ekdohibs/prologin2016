@@ -632,13 +632,22 @@ def upgrade(carte, dist_tuyaux, rev_tuyaux):
 
 ######################################################################
         
-pulsar_mean = None
+pulsar_total_value = None
+AT_MIN_PULSAR_VALUE = 350
         
 # Éxécute toutes les phases précédentes dans l'ordre
 def jouer_tour():
     log("Tour %d" % tour_actuel())
     
     timed_debut_tour()
+
+    global pulsar_total_value
+    if pulsar_total_value == None:
+        pulsar_total_value = 0
+        for pos in liste_pulsars():
+            u = info_pulsar(pos)
+            pulsar_total_value += u.puissance * u.pulsations_totales
+        log("Pulsar total value:", pulsar_total_value)
     
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
@@ -646,7 +655,9 @@ def jouer_tour():
 
     carte_plasma = read_carte_plasma()
 
-    if points_action() >= COUT_DESTRUCTION and CHARGE_DESTRUCTION + 1 <= score(moi()):
+    if points_action() >= COUT_DESTRUCTION and \
+       CHARGE_DESTRUCTION + 1 <= score(moi()) and \
+       pulsar_total_value >= AT_MIN_PULSAR_VALUE:
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
