@@ -161,7 +161,6 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
                 revenus[a][x][y] += revenus[a][nx][ny]
             otimes[x][y] += times[nx][ny] / len(voisins)
         if carte[x][y] == case_type.SUPER_TUYAU:
-            times[x][y] += 1
             for nx, ny in voisins:
                 times[x][y] += otimes[nx][ny] / len(voisins)
         else:
