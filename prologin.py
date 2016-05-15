@@ -142,6 +142,7 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
     dsts.sort()
     revenus = [make_matrix(0.) for _ in range(2)]
     times = make_matrix(0.)
+    otimes = make_matrix(0.)
 
     for d, p in dsts:
         x, y = p
@@ -154,10 +155,17 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
 
         assert(len(voisins) > 0)
 
+        otimes[x][y] += 1
         for nx, ny in voisins:
             for a in range(2):
                 revenus[a][x][y] += revenus[a][nx][ny]
-            times[x][y] += times[nx][ny] / len(voisins)
+            otimes[x][y] += times[nx][ny] / len(voisins)
+        if carte[x][y] == case_type.SUPER_TUYAU:
+            times[x][y] += 1
+            for nx, ny in voisins:
+                times[x][y] += otimes[nx][ny] / len(voisins)
+        else:
+            times[x][y] = otimes[x][y]
         for a in range(2):
             revenus[a][x][y] /= len(voisins)
 
@@ -175,14 +183,16 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
             if inf.pulsations_restantes == 0: continue
             r = inf.puissance * inf.pulsations_restantes
             for (x, y) in adj(pos):
-                value += r * rev_tuyaux[a][x][y]
+                if ttimes[x][y] <= ntrs:
+                    value += r * rev_tuyaux[a][x][y]
                 #if ttimes[x][y] <= ntrs:
                 #    value += r * rev_tuyaux[a][x][y] * (ntrs - ttimes[x][y])
         if plasma_value > 0:
             for x, y in all_tuyaux(carte):
                 #if ttimes[x][y] <= ntrs:
                 #    value += rev_tuyaux[a][x][y] * carte_plasma[x][y] * (ntrs - ttimes[x][y])
-                value += plasma_value * carte_plasma[x][y] * rev_tuyaux[a][x][y]
+                if ttimes[x][y] <= ntrs:
+                    value += plasma_value * carte_plasma[x][y] * rev_tuyaux[a][x][y]
         
         l.append(value)
     return l
@@ -373,6 +383,7 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     t0 = time()
     iterations = 0
     imoi = moi() % 2
+    rem_time = NB_TOURS - tour_actuel() + 1
     for p in at:
         if time() - t0 > MAX_AT_TIME:
             log("Early exit of attaque after %d iterations (%fs elapsed)" % \
@@ -388,6 +399,9 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
         delayed = 0
         for ty in all_tuyaux(ncarte):
             if fldd[ty[0]][ty[1]] == None: continue
+            elif carte_plasma[ty[0]][ty[1]] == 0: continue
+            elif t_times[ty[0]][ty[1]] == None or t_times[ty[0]][ty[1]] > rem_time:
+                continue
             w = len(fldd[ty[0]][ty[1]])
             for ntx, nty in fldd[ty[0]][ty[1]]:
                 if fld[ntx][nty] != None:
@@ -397,15 +411,16 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
                                          rev_tuyaux[imoi][nnt[0]][nnt[1]]):
                             delayed += carte_plasma[ty[0]][ty[1]] * \
                                        rev_tuyaux[adversaire() % 2][ty[0]][ty[1]] / (w * ww)
-        
+
         rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
         rmdiff += AT_DELAY_TRADEOFF * delayed
 
         if rmdiff > crvdiff:
             crvdiff = rmdiff
             best = p
-    if crvdiff > rv[moi() % 2] / AT_THRESH and crvdiff >= CHARGE_DESTRUCTION and best != None:
-        detruire(best)
+    if crvdiff > rv[moi() % 2] / AT_THRESH and \
+       crvdiff >= AT_DELAY_TRADEOFF * CHARGE_DESTRUCTION and best != None:
+          detruire(best)
 
 MAX_RENF_TRIES = 20
 MAX_RENF_TIME = 0.1 # In seconds
@@ -547,7 +562,7 @@ def jouer_tour():
 
     carte_plasma = read_carte_plasma()
 
-    if points_action() >= COUT_DESTRUCTION and CHARGE_DESTRUCTION <= score(moi()):
+    if points_action() >= COUT_DESTRUCTION and CHARGE_DESTRUCTION + 1 <= score(moi()):
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
