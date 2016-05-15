@@ -189,28 +189,35 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
     return l
 
 DOUBLE_SIZE = True
+SHORTER_TRADEOFF = 1/2.
+EXPAND_TRADEOFF = 1. + 1./1024
 
 @timed
-def joue(carte, dist_tuyaux, rev_tuyaux):
-    dsts = [(dist_tuyaux[x][y] / 2., (x, y)) for (x, y) in all_positions() \
+def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
+    flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
+    
+    dsts = [(dist_tuyaux[x][y] + 5, (x, y), (x, y)) for (x, y) in all_positions() \
             if rev_tuyaux[moi() % 2][x][y] > 0]
     orig = set(a[1] for a in dsts)
     r = make_matrix()
+    org = make_matrix()
+    
     heapify(dsts)
 
     while len(dsts) > 0:
-        d, p = heappop(dsts)
+        d, p, op = heappop(dsts)
         x, y = p
         if r[x][y] != None: continue
         r[x][y] = d
+        org[x][y] = op
 
         if p in orig:
             for (nx, ny) in adj(p):
                 if carte[nx][ny] == case_type.VIDE:
-                    heappush(dsts, (d + 1, (nx, ny)))
+                    heappush(dsts, (d + EXPAND_TRADEOFF, (nx, ny), op))
         elif carte[x][y] == case_type.VIDE:
             for newp in adj(p):
-                heappush(dsts, (d + 1, newp))
+                heappush(dsts, (d + EXPAND_TRADEOFF, newp, op))
             
     
     pss = [pos for pos in all_pulsars(carte) if r[pos[0]][pos[1]] != None \
@@ -218,9 +225,11 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
     ]
     pss += [(x, y) for (x, y) in all_positions() if \
             r[x][y] != None and dist_tuyaux[x][y] != None and \
-            rev_tuyaux[moi() % 2][x][y] == 0 and \
-            rev_tuyaux[adversaire() % 2][x][y] > 0 and \
-            dist_tuyaux[x][y] >= 2 * r[x][y]]
+            #rev_tuyaux[moi() % 2][x][y] == 0 and \
+            #rev_tuyaux[adversaire() % 2][x][y] > 0 and \
+            dist_tuyaux[x][y] + 5 > r[x][y] + 1e-3 and \
+            flow[x][y] > 0
+    ]
     pss += [(x, y) for (x, y) in all_positions() if \
             dist_tuyaux[x][y] == None and is_tuyau((x, y), carte) \
             and r[x][y] != None
@@ -233,7 +242,8 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
     if pss == []: return
 
     def h(p):
-        return r[p[0]][p[1]]
+        ox, oy = org[p[0]][p[1]]
+        return r[p[0]][p[1]] - r[ox][oy] * SHORTER_TRADEOFF
     best = pss[argmin(pss, h)]
     x, y = p = best
     while True:
@@ -245,7 +255,7 @@ def joue(carte, dist_tuyaux, rev_tuyaux):
                 if DOUBLE_SIZE:
                     construire((x + dv, y - du))
                 return
-            if r[nx][ny] == r[x][y] - 1 and carte[nx][ny] == case_type.VIDE:
+            if r[nx][ny] == r[x][y] - EXPAND_TRADEOFF and carte[nx][ny] == case_type.VIDE:
                 x, y = p = newp
                 break
         else:
@@ -417,9 +427,10 @@ def jouer_tour():
     for i in range(4):
         if points_action() == 0: break
         carte = read_carte()
+        carte_plasma = read_carte_plasma()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
-        joue(carte, dist_tuyaux, rev_tuyaux)
+        joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma)
 
     for i in range(4):
         if points_action() == 0: break
