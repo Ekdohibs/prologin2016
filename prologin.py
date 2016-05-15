@@ -164,6 +164,8 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
     return revenus, times
 
 
+PLASMA_TRADEOFF = 5
+
 @timed
 def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
     l = []
@@ -178,10 +180,11 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
                 value += r * rev_tuyaux[a][x][y]
                 #if ttimes[x][y] <= ntrs:
                 #    value += r * rev_tuyaux[a][x][y] * (ntrs - ttimes[x][y])
-        for x, y in all_tuyaux(carte):
+        """for x, y in all_tuyaux(carte):
             #if ttimes[x][y] <= ntrs:
             #    value += rev_tuyaux[a][x][y] * carte_plasma[x][y] * (ntrs - ttimes[x][y])
-            value += carte_plasma[x][y] * rev_tuyaux[a][x][y]
+            value += PLASMA_TRADEOFF * carte_plasma[x][y] * rev_tuyaux[a][x][y]"""
+        
         l.append(value)
     return l
 
@@ -297,6 +300,7 @@ def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
             
 MAX_AT_TRIES = 50
 MAX_AT_TIME = 0.3 # In seconds
+AT_THRESH = 100.
             
 @timed
 def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
@@ -329,9 +333,7 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
         if rmdiff > crvdiff:
             crvdiff = rmdiff
             best = p
-    #if crvdiff > rv[moi() % 2] / 10. and best != None:
-    print(rv, crvdiff)
-    if best != None:
+    if crvdiff > rv[moi() % 2] / AT_THRESH and crvdiff >= CHARGE_DESTRUCTION and best != None:
         detruire(best)
 
 MAX_RENF_TRIES = 20
