@@ -372,6 +372,7 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     at = at[:MAX_AT_TRIES]
     t0 = time()
     iterations = 0
+    imoi = moi() % 2
     for p in at:
         if time() - t0 > MAX_AT_TIME:
             log("Early exit of attaque after %d iterations (%fs elapsed)" % \
@@ -392,7 +393,8 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
                 if fld[ntx][nty] != None:
                     ww = len(fld[ntx][nty])
                     for nnt in fld[ntx][nty]:
-                        if ty == nnt:
+                        if ty == nnt or (rev_tuyaux[imoi][ty[0]][ty[1]] < \
+                                         rev_tuyaux[imoi][nnt[0]][nnt[1]]):
                             delayed += carte_plasma[ty[0]][ty[1]] * \
                                        rev_tuyaux[adversaire() % 2][ty[0]][ty[1]] / (w * ww)
         
