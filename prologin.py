@@ -194,7 +194,7 @@ EXPAND_TRADEOFF = 1. + 1./1024
 POWER_TRADEOFF = 2
 
 @timed
-def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
+def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, estimated_turn_actions):
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
     
     dsts = [(dist_tuyaux[x][y] + 5, (x, y), (x, y)) for (x, y) in all_positions() \
@@ -222,12 +222,14 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
             
     pss = []
     wpss = {}
+    rpss = {}
     for pos in all_pulsars(carte):
         if r[pos[0]][pos[1]] != None:
             u = info_pulsar(pos)
             if u.pulsations_restantes > 0:
                 pss.append(pos)
                 wpss[pos] = u.puissance / u.periode
+                rpss[pos] = u.periode * u.pulsations_totales
 
     for x, y in all_positions():
         if r[x][y] != None and dist_tuyaux[x][y] != None and \
@@ -235,13 +237,22 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
            flow[x][y] > 0:
               pss.append((x, y))
               wpss[(x, y)] = flow[x][y]
+              rpss[(x, y)] = NB_TOURS
         elif dist_tuyaux[x][y] == None and is_tuyau((x, y), carte) \
              and r[x][y] != None:
             pss.append((x, y))
             wpss[(x, y)] = 0
+            rpss[(x, y)] = NB_TOURS
 
     pss = list(set(p for p in pss if \
                    any(padd(p, dir) not in orig for dir in DIRS)))
+
+    toura = tour_actuel()
+    def close_enough(p):
+        ox, oy = org[p[0]][p[1]]
+        max_dist = ((rpss[p] - toura + 2) // 2) * ((estimated_turn_actions + 1) // 2)
+        return r[p[0]][p[1]] - r[ox][oy] <= max_dist
+    pss = [p for p in pss if close_enough(p)]
 
     # TODO: do something
     if pss == []: return
@@ -531,14 +542,15 @@ def jouer_tour():
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
         attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times)
-        
+
+    estimated_turn_actions = points_action()
     for i in range(4):
         if points_action() == 0: break
         carte = read_carte()
         carte_plasma = read_carte_plasma()
         dist_tuyaux = distance_tuyaux(carte)
         rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
-        joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma)
+        joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, estimated_turn_actions)
 
     for i in range(4):
         if points_action() == 0: break
