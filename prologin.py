@@ -499,6 +499,16 @@ def was_destroyed(dpos):
     construire(dpos)
     renforce(dpos)
 
+def upgrade(carte, dist_tuyaux, rev_tuyaux):
+    ppos = [pos for pos in all_tuyaux(carte) if \
+            carte[pos[0]][pos[1]] == case_type.TUYAU and \
+            rev_tuyaux[moi() % 2][pos[0]][pos[1]] != None and \
+            rev_tuyaux[moi() % 2][pos[0]][pos[1]] > 0 and \
+            (pos[0] + pos[1]) % 2 == 0 \
+    ]
+    ppos.sort(key = lambda p: dist_tuyaux[p[0]][p[1]])
+    for pos in ppos:
+        ameliorer(pos)
     
 # Fonction appelée à chaque tour.
 def jouer_tour():
@@ -532,6 +542,12 @@ def jouer_tour():
         rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
         if renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
             break
+
+    if points_action() > 0:
+        carte = read_carte()
+        dist_tuyaux = distance_tuyaux(carte)
+        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
+        upgrade(carte, dist_tuyaux, rev_tuyaux)
 
     augmente_aspiration()
 
