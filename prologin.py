@@ -190,7 +190,8 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
 DOUBLE_SIZE = True
 SHORTER_TRADEOFF = 1/2.
 EXPAND_TRADEOFF = 1. + 1./1024
-POWER_TRADEOFF = 8
+#POWER_TRADEOFF = 8
+POWER_TRADEOFF = 2
 
 @timed
 def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
@@ -245,10 +246,12 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
     # TODO: do something
     if pss == []: return
 
+    mean = sum(wpss[p] for p in pss) / len(pss)
+
     def h(p):
         ox, oy = org[p[0]][p[1]]
         return r[p[0]][p[1]] - r[ox][oy] * SHORTER_TRADEOFF - \
-            wpss[p] * POWER_TRADEOFF
+            wpss[p] * POWER_TRADEOFF / mean #wpss[p] * POWER_TRADEOFF
 
     
     best = pss[argmin(pss, h)]
@@ -509,12 +512,14 @@ def upgrade(carte, dist_tuyaux, rev_tuyaux):
     ppos.sort(key = lambda p: dist_tuyaux[p[0]][p[1]])
     for pos in ppos:
         ameliorer(pos)
-    
+
+pulsar_mean = None
+        
 # Fonction appelée à chaque tour.
 def jouer_tour():
     log("Tour %d" % tour_actuel())
     timed_debut_tour()
-    
+
     # Recontruire les tuyaux détruits par l'adversaire
     for p in hist_tuyaux_detruits():
         was_destroyed(p)
