@@ -190,6 +190,7 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
 DOUBLE_SIZE = True
 SHORTER_TRADEOFF = 1/2.
 EXPAND_TRADEOFF = 1. + 1./1024
+POWER_TRADEOFF = 8
 
 @timed
 def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
@@ -218,21 +219,25 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
             for newp in adj(p):
                 heappush(dsts, (d + EXPAND_TRADEOFF, newp, op))
             
-    
-    pss = [pos for pos in all_pulsars(carte) if r[pos[0]][pos[1]] != None \
-           and info_pulsar(pos).pulsations_restantes > 0 \
-    ]
-    pss += [(x, y) for (x, y) in all_positions() if \
-            r[x][y] != None and dist_tuyaux[x][y] != None and \
-            #rev_tuyaux[moi() % 2][x][y] == 0 and \
-            #rev_tuyaux[adversaire() % 2][x][y] > 0 and \
-            dist_tuyaux[x][y] + 5 > r[x][y] + 1e-3 and \
-            flow[x][y] > 0
-    ]
-    pss += [(x, y) for (x, y) in all_positions() if \
-            dist_tuyaux[x][y] == None and is_tuyau((x, y), carte) \
-            and r[x][y] != None
-    ]
+    pss = []
+    wpss = {}
+    for pos in all_pulsars(carte):
+        if r[pos[0]][pos[1]] != None:
+            u = info_pulsar(pos)
+            if u.pulsations_restantes > 0:
+                pss.append(pos)
+                wpss[pos] = u.puissance / u.periode
+
+    for x, y in all_positions():
+        if r[x][y] != None and dist_tuyaux[x][y] != None and \
+           dist_tuyaux[x][y] + 5 > r[x][y] + 1e-3 and \
+           flow[x][y] > 0:
+              pss.append((x, y))
+              wpss[(x, y)] = flow[x][y]
+        elif dist_tuyaux[x][y] == None and is_tuyau((x, y), carte) \
+             and r[x][y] != None:
+            pss.append((x, y))
+            wpss[(x, y)] = 0
 
     pss = list(set(p for p in pss if \
                    any(padd(p, dir) not in orig for dir in DIRS)))
@@ -242,7 +247,10 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
 
     def h(p):
         ox, oy = org[p[0]][p[1]]
-        return r[p[0]][p[1]] - r[ox][oy] * SHORTER_TRADEOFF
+        return r[p[0]][p[1]] - r[ox][oy] * SHORTER_TRADEOFF - \
+            wpss[p] * POWER_TRADEOFF
+
+    
     best = pss[argmin(pss, h)]
     x, y = p = best
     while True:
@@ -363,7 +371,8 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
                     ww = len(fld[ntx][nty])
                     for nnt in fld[ntx][nty]:
                         if ty == nnt:
-                            delayed += carte_plasma[ty[0]][ty[1]] / (w * ww)
+                            delayed += carte_plasma[ty[0]][ty[1]] * \
+                                       rev_tuyaux[adversaire() % 2][ty[0]][ty[1]] / (w * ww)
         
         rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
         rmdiff += AT_DELAY_TRADEOFF * delayed
