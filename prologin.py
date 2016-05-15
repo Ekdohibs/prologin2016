@@ -136,8 +136,38 @@ def tuyaux_revenu(carte, dist_tuyaux):
     return revenus
 
 @timed
-def revenu_moyen(carte, rev_tuyaux, carte_plasma):
+def tuyaux_time_revenu(carte, dist_tuyaux):
+    pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
+    dsts = [(dist_tuyaux[p[0]][p[1]], p) for p in pos]
+    dsts.sort()
+    revenus = [make_matrix(0.) for _ in range(2)]
+    times = make_matrix(0.)
+
+    for d, p in dsts:
+        x, y = p
+        if carte[x][y] == case_type.BASE:
+            revenus[proprietaire_base(p) % 2][x][y] = 1.
+            times[x][y] = 0
+            continue
+
+        voisins = [(nx, ny) for (nx, ny) in adj(p) if dist_tuyaux[nx][ny] == d - 1]
+
+        assert(len(voisins) > 0)
+
+        for nx, ny in voisins:
+            for a in range(2):
+                revenus[a][x][y] += revenus[a][nx][ny]
+            times[x][y] += times[nx][ny] / len(voisins)
+        for a in range(2):
+            revenus[a][x][y] /= len(voisins)
+
+    return revenus, times
+
+
+@timed
+def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
     l = []
+    ntrs = NB_TOURS - tour_actuel() + 1
     for a in range(2):
         value = 0.
         for pos in all_pulsars(carte):
@@ -145,9 +175,13 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma):
             if inf.pulsations_restantes == 0: continue
             r = inf.puissance * inf.pulsations_restantes
             for (x, y) in adj(pos):
-                value += r * revenus[a][x][y]
+                value += r * rev_tuyaux[a][x][y]
+                #if ttimes[x][y] <= ntrs:
+                #    value += r * rev_tuyaux[a][x][y] * (ntrs - ttimes[x][y])
         for x, y in all_tuyaux(carte):
-            value += revenus[a][x][y] * carte_plasma[x][y]
+            #if ttimes[x][y] <= ntrs:
+            #    value += rev_tuyaux[a][x][y] * carte_plasma[x][y] * (ntrs - ttimes[x][y])
+            value += r * rev_tuyaux[a][x][y]
         l.append(value)
     return l
 
@@ -260,30 +294,14 @@ def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
             flow[nx][ny] += flow[x][y] / len(voisins)
 
     return flow
-
-@timed
-def revenu_moyen(carte, rev_tuyaux, carte_plasma):
-    l = []
-    for a in range(2):
-        value = 0.
-        for pos in all_pulsars(carte):
-            inf = info_pulsar(pos)
-            if inf.pulsations_restantes == 0: continue
-            r = inf.puissance / inf.periode
-            for (x, y) in adj(pos):
-                value += r * rev_tuyaux[a][x][y]
-        l.append(value)
-    return l
-
-
             
 MAX_AT_TRIES = 50
 MAX_AT_TIME = 0.3 # In seconds
             
 @timed
-def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
+def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
-    rv = revenu_moyen(carte, rev_tuyaux, carte_plasma)
+    rv = revenu_moyen(carte, rev_tuyaux, carte_plasma, t_times)
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
     best = None
@@ -305,24 +323,26 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
-        rvt = tuyaux_revenu(ncarte, dt)
-        rm = revenu_moyen(ncarte, rvt, carte_plasma)
+        rvt, tt = tuyaux_time_revenu(ncarte, dt)
+        rm = revenu_moyen(ncarte, rvt, carte_plasma, tt)
         rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
         if rmdiff > crvdiff:
             crvdiff = rmdiff
             best = p
-    if crvdiff > rv[moi() % 2] / 10. and best != None:
+    #if crvdiff > rv[moi() % 2] / 10. and best != None:
+    print(rv, crvdiff)
+    if best != None:
         detruire(best)
 
 MAX_RENF_TRIES = 20
 MAX_RENF_TIME = 0.1 # In seconds
         
 @timed
-def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
+def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     if points_action() == 0:
         return True
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
-    rv = revenu_moyen(carte, rev_tuyaux, carte_plasma)
+    rv = revenu_moyen(carte, rev_tuyaux, carte_plasma, t_times)
     rvdiff = rv[moi() % 2] - rv[adversaire() % 2]
     crvdiff = rvdiff
     worst = None
@@ -345,8 +365,8 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
         ncarte = deepcopy(carte)
         ncarte[p[0]][p[1]] = case_type.DEBRIS
         dt = distance_tuyaux(ncarte)
-        rvt = tuyaux_revenu(ncarte, dt)
-        rm = revenu_moyen(ncarte, rvt, carte_plasma)
+        rvt, tt = tuyaux_time_revenu(ncarte, dt)
+        rm = revenu_moyen(ncarte, rvt, carte_plasma, tt)
         rmdiff = rm[moi() % 2] - rm[adversaire() % 2]
         if rmdiff < crvdiff:
             crvdiff = rmdiff
@@ -389,8 +409,8 @@ def jouer_tour():
     if points_action() >= COUT_DESTRUCTION and CHARGE_DESTRUCTION <= score(moi()):
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
-        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
-        attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma)
+        rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
+        attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times)
         
     for i in range(4):
         if points_action() == 0: break
@@ -403,8 +423,8 @@ def jouer_tour():
         if points_action() == 0: break
         carte = read_carte()
         dist_tuyaux = distance_tuyaux(carte)
-        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
-        if renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma):
+        rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
+        if renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
             break
 
     augmente_aspiration()
