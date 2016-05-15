@@ -181,7 +181,7 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes):
         for x, y in all_tuyaux(carte):
             #if ttimes[x][y] <= ntrs:
             #    value += rev_tuyaux[a][x][y] * carte_plasma[x][y] * (ntrs - ttimes[x][y])
-            value += r * rev_tuyaux[a][x][y]
+            value += carte_plasma[x][y] * rev_tuyaux[a][x][y]
         l.append(value)
     return l
 
