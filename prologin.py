@@ -194,7 +194,8 @@ EXPAND_TRADEOFF = 1. + 1./1024
 POWER_TRADEOFF = 2
 
 @timed
-def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, estimated_turn_actions):
+def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
+         estimated_turn_actions, t_times):
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
     
     dsts = [(dist_tuyaux[x][y] + 5, (x, y), (x, y)) for (x, y) in all_positions() \
@@ -250,8 +251,15 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, estimated_turn_actions):
     toura = tour_actuel()
     def close_enough(p):
         ox, oy = org[p[0]][p[1]]
-        max_dist = ((rpss[p] - toura + 2) // 2) * ((estimated_turn_actions + 1) // 2)
-        return r[p[0]][p[1]] - r[ox][oy] <= max_dist
+        advance_per_turn = (estimated_turn_actions + 1) // 2
+        if advance_per_turn == 0:
+            return False
+        #max_dist = ((rpss[p] - toura + 2) // 2) * advance_per_turn
+        orig_dist = r[p[0]][p[1]] - r[ox][oy]
+        first_get_turn = toura + 2 * ((orig_dist + advance_per_turn - 1) // advance_per_turn)
+        first_back_turn = first_get_turn + orig_dist + t_times[ox][oy]
+        return first_get_turn <= rpss[p] and first_back_turn <= NB_TOURS
+    
     pss = [p for p in pss if close_enough(p)]
 
     # TODO: do something
@@ -549,8 +557,9 @@ def jouer_tour():
         carte = read_carte()
         carte_plasma = read_carte_plasma()
         dist_tuyaux = distance_tuyaux(carte)
-        rev_tuyaux = tuyaux_revenu(carte, dist_tuyaux)
-        joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, estimated_turn_actions)
+        rev_tuyaux, t_times = tuyaux_time_revenu(carte, dist_tuyaux)
+        joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
+             estimated_turn_actions, t_times)
 
     for i in range(4):
         if points_action() == 0: break
