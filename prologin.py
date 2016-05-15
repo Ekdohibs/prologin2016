@@ -1,7 +1,35 @@
+# -*- coding: utf-8 -*-
+
+######################################################################
+# Fonctionnement d'un tour : 
+# - Si l'adversaire a détruit une position, on regarde si il est
+#   intéressant de la reconstruire. Si oui, on le fait et on renforce
+#   les environs.
+# - Si on a assez de plasma et que c'est intéressant, on attaque
+#   l'adversaire. Pour cela, on évalue les effets possibles causés par
+#   une destruction ; on accorde un bonus au plasma faisant demi-tour
+#   à cause de l'attaque.
+# - On construit des tuyaux vers les cibles (tuyaux et pulsars) les
+#   plus intéressantes : pour cela, on fait un compromis
+#   valeur-distance. Si on a suffisemment de points d'action, on
+#   construit deux tuyaux en parallèle afin d'augmenter la résistance
+#   aux attaques.
+# - Si jamais il nous reste encore des points d'action, on renforce
+#   les points faibles de notre réseau de tubes. On utilise pour
+#   cela une simulation similaire à l'attaque.
+# - Si il en reste *encore*, on améliore les tuyaux proches de la
+#   base, et en forme de quadrillage.
+# - Avec les éventuels points restants, et la modification gratuite,
+#   on améliore l'aspiration des bases.
+######################################################################
+
 from api import *
 from heapq import heappush, heappop, heapify
 from time import time, sleep
 from copy import deepcopy
+
+######################################################################
+# Helpers
 
 carte = [[None] * TAILLE_TERRAIN for i in range(TAILLE_TERRAIN)]
 DIRS = [(0, 1), (0, -1), (1, 0), (-1, 0)]
@@ -38,6 +66,26 @@ def padd(p1, p2):
 def valide(p):
     return 0 <= p[0] < TAILLE_TERRAIN and 0 <= p[1] < TAILLE_TERRAIN
 
+def make_matrix(elem = None):
+    return [[elem] * TAILLE_TERRAIN for _ in range(TAILLE_TERRAIN)]
+
+def adj(p):
+    l = [padd(p, dir) for dir in DIRS]
+    return [x for x in l if valide(x)]
+
+def argmin(l, f = lambda x: x):
+    best = f(l[0])
+    ibest = 0
+    for i in range(1, len(l)):
+        r = f(l[i])
+        if r < best:
+            best = r
+            ibest = i
+    return ibest
+
+######################################################################
+# Fonctions de base qui sont des wrappers autour de l'API
+
 @timed
 def read_carte():
     carte = make_matrix()
@@ -67,26 +115,12 @@ def all_pulsars(carte):
 def all_tuyaux(carte):
     return [pos for pos in all_positions() if is_tuyau(pos, carte)]
 
-def make_matrix(elem = None):
-    return [[elem] * TAILLE_TERRAIN for _ in range(TAILLE_TERRAIN)]
-
-def adj(p):
-    l = [padd(p, dir) for dir in DIRS]
-    return [x for x in l if valide(x)]
-
-def argmin(l, f = lambda x: x):
-    best = f(l[0])
-    ibest = 0
-    for i in range(1, len(l)):
-        r = f(l[i])
-        if r < best:
-            best = r
-            ibest = i
-    return ibest
-
+######################################################################
 
 dist_tuyaux = None
 
+# Calcule la distance de chaque tuyau aux bases,
+# en tenant compte de la force d'aspiration de celles-ci
 @timed
 def distance_tuyaux(carte):
     distance = make_matrix()
@@ -110,6 +144,10 @@ def distance_tuyaux(carte):
 
 rev_tuyaux = None
 
+######################################################################
+
+# Calcule, pour chaque position, la proportion du plasma y étant
+# revenant à chaque joueur
 @timed
 def tuyaux_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
@@ -135,6 +173,8 @@ def tuyaux_revenu(carte, dist_tuyaux):
 
     return revenus
 
+# Calcule la même chose que la fonction précédente, mais calcule
+# également le temps mis par le plasma à atteindre les bases
 @timed
 def tuyaux_time_revenu(carte, dist_tuyaux):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
@@ -170,7 +210,10 @@ def tuyaux_time_revenu(carte, dist_tuyaux):
 
     return revenus, times
 
+######################################################################
 
+# Calcule une estimation de la valeur d'une position pour chaque joueur
+# plasma_value permet de contrôler l'importance du plasma dans les tubes
 @timed
 def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
     l = []
@@ -196,12 +239,15 @@ def revenu_moyen(carte, rev_tuyaux, carte_plasma, ttimes, plasma_value = 0):
         l.append(value)
     return l
 
+######################################################################
+
 DOUBLE_SIZE = True
 SHORTER_TRADEOFF = 1/2.
 EXPAND_TRADEOFF = 1. + 1./1024
 #POWER_TRADEOFF = 8
 POWER_TRADEOFF = 2
 
+# Construit vers les pulsars et tuyaux les plus intéressants
 @timed
 def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
          estimated_turn_actions, t_times):
@@ -299,6 +345,10 @@ def joue(carte, dist_tuyaux, rev_tuyaux, carte_plasma, \
         else:
             assert False
 
+######################################################################
+            
+# Utilise les points d'action restants (éventuellement 0)
+# pour augmenter l'aspiration des bases
 @timed            
 def augmente_aspiration():
     bases = ma_base()
@@ -317,6 +367,10 @@ def augmente_aspiration():
             if puissance_aspiration(bases[j]) == 0: continue
             deplacer_aspiration(bases[j], bases[i])
 
+
+######################################################################
+            
+# Calcule le flot transitant dans chaque tuyau
 @timed
 def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
     pos = [p for p in all_positions() if dist_tuyaux[p[0]][p[1]] != None]
@@ -346,6 +400,10 @@ def tuyaux_flow(carte, dist_tuyaux, carte_plasma):
 
     return flow
 
+######################################################################
+
+# Calcule les directions (sortantes) du flot de chaque tuyau
+# Équivalent à directions_plasma
 @timed
 def flow_directions(carte, dist_tuyaux):
     drs = make_matrix()
@@ -358,11 +416,15 @@ def flow_directions(carte, dist_tuyaux):
     return drs
 
 
+######################################################################
+
 MAX_AT_TRIES = 50
 MAX_AT_TIME = 0.3 # In seconds
 AT_THRESH = 100.
 AT_DELAY_TRADEOFF = 5
-            
+
+# Attaque l'adversaire, en cherchant le point le plus faible
+# Essaie de retarder le plasma dans ses tuyaux si possible
 @timed
 def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     flow = tuyaux_flow(carte, dist_tuyaux, carte_plasma)
@@ -421,9 +483,13 @@ def attaque(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
        crvdiff >= AT_DELAY_TRADEOFF * CHARGE_DESTRUCTION and best != None:
           detruire(best)
 
+######################################################################
+          
 MAX_RENF_TRIES = 20
 MAX_RENF_TIME = 0.1 # In seconds
-        
+
+# À la fin du tour, si il reste encore des points d'action, renforce les
+# points faibles afin d'obtenir un double tuyau
 @timed
 def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     if points_action() == 0:
@@ -464,12 +530,16 @@ def renforce_tout(carte, dist_tuyaux, rev_tuyaux, carte_plasma, t_times):
     else:
         return True
 
-        
+######################################################################        
 mon_id = None
 # Fonction appelée au début de la partie.
 def partie_init():
     pass
 
+######################################################################
+
+# Renforce un point donné : étudie les voisins (en norme infinie)
+# et ajoute des tuyaux aux points ayant le plus de voisins
 def renforce(p):
     l = [(x, y) for x in range(p[0] - 1, p[0] + 2) \
          for y in range(p[1] - 1, p[1] + 2) if valide((x, y)) and \
@@ -480,11 +550,16 @@ def renforce(p):
     log("Renforce", l[i])
     construire(l[i])
 
+######################################################################
+    
 MAX_WD_TRIES = 30
 MAX_WD_TIME = 0.2 # In seconds
 WD_TRADEOFF = 10.
 WD_PLASMA = 1
 
+
+# Appelée quand une position a été détruite ; étudie si il est nécessaire
+# de la reconstruire, et si oui, la reconstruit et renforce les alentours
 @timed
 def was_destroyed(dpos):
     if points_action() == 0:
@@ -539,6 +614,11 @@ def was_destroyed(dpos):
     construire(dpos)
     renforce(dpos)
 
+######################################################################
+    
+# Si on a encore des points d'action, améliore
+# les tuyaux proches des bases, en forme de quadrillage
+# afin de gagner un peu de vitesse
 def upgrade(carte, dist_tuyaux, rev_tuyaux):
     ppos = [pos for pos in all_tuyaux(carte) if \
             carte[pos[0]][pos[1]] == case_type.TUYAU and \
@@ -550,9 +630,11 @@ def upgrade(carte, dist_tuyaux, rev_tuyaux):
     for pos in ppos:
         ameliorer(pos)
 
+######################################################################
+        
 pulsar_mean = None
         
-# Fonction appelée à chaque tour.
+# Éxécute toutes les phases précédentes dans l'ordre
 def jouer_tour():
     log("Tour %d" % tour_actuel())
     
@@ -597,7 +679,9 @@ def jouer_tour():
     augmente_aspiration()
 
     timed_show_log()
-        
+
+######################################################################
+    
 # Fonction appelée à la fin de la partie.
 def partie_fin():
     pass
